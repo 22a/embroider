@@ -1,55 +1,78 @@
-import resolve from 'resolve';
-import { join } from 'path';
 import merge from 'lodash/merge';
-import fs from 'fs-extra';
-import { loadFromFixtureData } from './helpers';
-import { baseAddon, appScenarios } from './scenarios';
+import { appScenarios } from './scenarios';
 import { PreparedApp } from 'scenario-tester';
 import QUnit from 'qunit';
-// import { expectFilesAt, ExpectFile } from '@embroider/test-support/file-assertions/qunit';
 
 const { module: Qmodule, test } = QUnit;
 
 appScenarios
   .only('release')
-  .map('app-config-environment', _project => {
-    // let addon = baseAddon();
-    //
-    // merge(addon.files, loadFromFixtureData('hello-world-addon'));
-    // addon.pkg.name = 'my-addon';
-    //
-    // addon.linkDependency('@embroider/sample-transforms', { baseDir: __dirname });
-    // addon.linkDependency('@embroider/macros', { baseDir: __dirname });
-    // project.addDependency(addon);
-    //
-    // // our app will include an in-repo addon
-    // project.pkg['ember-addon'] = { paths: ['lib/in-repo-addon'] };
-    // merge(project.files, loadFromFixtureData('basic-in-repo-addon'));
+  .map('app-config-environment', project => {
+    merge(project.files, {
+      'ember-cli-build.js': `
+        'use strict';
+
+        const EmberApp = require('ember-cli/lib/broccoli/ember-app');
+        const { maybeEmbroider } = require('@embroider/test-setup');
+
+        module.exports = function (defaults) {
+          let app = new EmberApp(defaults, {
+            tests: true,
+            storeConfigInMeta: false,
+          });
+          return maybeEmbroider(app, {});
+        };
+      `,
+      config: {
+        'environment.js': `module.exports = function(environment) {
+          let ENV = {
+            // DEFAULTS
+            modulePrefix: 'my-app',
+            podModulePrefix: '',
+            environment,
+            rootURL: '/',
+            locationType: 'auto',
+            EmberENV: {
+              FEATURES: {
+              },
+              EXTEND_PROTOTYPES: {
+                Date: false
+              }
+            },
+            APP: {},
+
+            // CUSTOM
+            someCustomField: true,
+          };
+          return ENV;
+        };`,
+      },
+      tests: {
+        unit: {
+          'store-config-in-meta-test.js': `
+            import { module, test } from 'qunit';
+            import ENV from 'app-template/config/environment';
+            console.log(ENV.someCustomField)
+
+            module('Unit | storeConfigInMeta', function (hooks) {
+              test('it has loaded the correct config values', async function (assert) {
+                assert.equal(ENV.someCustomField, true);
+              });
+            });`,
+        },
+      },
+    });
   })
-  .forEachScenario(async scenario => {
-    Qmodule(`${scenario.name}`, function (hooks) {
+  .forEachScenario(scenario => {
+    Qmodule(scenario.name, function (hooks) {
       let app: PreparedApp;
-      let workspaceDir: string;
-
-      hooks.before(async assert => {
-        // TODO(@22a): set tests: true,
-        // TODO(@22a): set storeConfigInMeta: false,
-        // TODO(@22a): set some unique config key in the app's test config
-        process.env.THROW_UNLESS_PARALLELIZABLE = '1'; // see https://github.com/embroider-build/embroider/pull/924
+      hooks.before(async () => {
         app = await scenario.prepare();
-        let result = await app.execute('cross-env node ./node_modules/ember-cli/bin/ember b');
+      });
+
+      test(`yarn test`, async function (assert) {
+        let result = await app.execute(`yarn test`);
         assert.equal(result.exitCode, 0, result.output);
-        workspaceDir = fs.readFileSync(join(app.dir, 'dist', '.stage1-output'), 'utf8');
-      });
-
-      hooks.after(async () => {
-        delete process.env.THROW_UNLESS_PARALLELIZABLE;
-      });
-
-      test('config/environment.js module exists with correct content', function (assert) {
-        assert.ok(fs.existsSync(join(workspaceDir, 'node_modules/my-addon/_app_/components/hello-world.js')));
-        assert.ok(true);
-        // TODO(@22a): assert that the unique config key exists somewhere in the ... correct modules?
       });
     });
   });

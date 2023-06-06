@@ -25,25 +25,29 @@ appScenarios
       `,
       config: {
         'environment.js': `module.exports = function(environment) {
+          // DEFAULT config/environment.js
           let ENV = {
-            // DEFAULTS
             modulePrefix: 'my-app',
-            podModulePrefix: '',
             environment,
             rootURL: '/',
-            locationType: 'auto',
+            locationType: 'history',
             EmberENV: {
-              FEATURES: {
-              },
-              EXTEND_PROTOTYPES: {
-                Date: false
-              }
+              EXTEND_PROTOTYPES: false,
+              FEATURES: {},
             },
             APP: {},
-
-            // CUSTOM
-            someCustomField: true,
           };
+
+          if (environment === 'test') {
+            ENV.locationType = 'none';
+            ENV.APP.LOG_ACTIVE_GENERATION = false;
+            ENV.APP.LOG_VIEW_LOOKUPS = false;
+            ENV.APP.rootElement = '#ember-testing';
+            ENV.APP.autoboot = false;
+          };
+
+          // CUSTOM
+          ENV.someCustomField = true;
           return ENV;
         };`,
       },
@@ -52,7 +56,6 @@ appScenarios
           'store-config-in-meta-test.js': `
             import { module, test } from 'qunit';
             import ENV from 'app-template/config/environment';
-            console.log(ENV.someCustomField)
 
             module('Unit | storeConfigInMeta', function (hooks) {
               test('it has loaded the correct config values', async function (assert) {
@@ -70,7 +73,7 @@ appScenarios
         app = await scenario.prepare();
       });
 
-      test(`yarn test`, async function (assert) {
+      test(`yarn test ran with custom unit test`, async function (assert) {
         let result = await app.execute(`yarn test`);
         assert.equal(result.exitCode, 0, result.output);
       });
